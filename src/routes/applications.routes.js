@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const { Application, Document, Note } = require('../models');
+const { requireRole } = require('../middleware/require-role');
 const {
   getAvailableApplicationTransitions,
   transitionApplication,
@@ -16,10 +17,6 @@ function makeError(status, code, message, details) {
   err.code = code;
   if (details) err.details = details;
   return err;
-}
-
-function normalizeRole(roleValue) {
-  return typeof roleValue === 'string' ? roleValue.trim().toLowerCase() : '';
 }
 
 function normalizeOptionalString(value) {
@@ -55,14 +52,32 @@ async function seedDefaultDocuments(applicationId) {
   await Document.insertMany(docs, { ordered: false });
 }
 
+async function getApplicationWithAgentScope(req, applicationId) {
+  const application = await Application.findById(applicationId);
+  if (!application) {
+    throw makeError(404, 'APPLICATION_NOT_FOUND', 'Application not found');
+  }
+
+  if (req.role === 'agent') {
+    if (!req.agentId) {
+      throw makeError(400, 'AGENT_ID_REQUIRED', 'X-Agent-Id header is required for agent requests');
+    }
+    if (!application.agentId || application.agentId !== req.agentId) {
+      // Deliberately return 404 to avoid leaking resource existence across agents.
+      throw makeError(404, 'APPLICATION_NOT_FOUND', 'Application not found');
+    }
+  }
+
+  return application;
+}
+
+router.use(requireRole());
+
 router.post('/', async (req, res, next) => {
   try {
     validateCreateBody(req.body);
 
-    const role = normalizeRole(req.header('X-Role'));
-    const headerAgentId = req.header('X-Agent-Id');
-
-    if (role === 'agent' && (!headerAgentId || !headerAgentId.trim())) {
+    if (req.role === 'agent' && !req.agentId) {
       throw makeError(400, 'AGENT_ID_REQUIRED', 'X-Agent-Id header is required for agent requests');
     }
 
@@ -71,7 +86,7 @@ router.post('/', async (req, res, next) => {
       course: req.body.course.trim(),
       university: req.body.university.trim(),
       currentStage: 'new_app',
-      agentId: role === 'agent' ? headerAgentId.trim() : normalizeOptionalString(req.body.agentId),
+      agentId: req.role === 'agent' ? req.agentId : normalizeOptionalString(req.body.agentId),
     });
 
     await seedDefaultDocuments(application._id);
@@ -92,9 +107,14 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-router.get('/', async (_req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
-    const applications = await Application.find().sort({ createdAt: -1 });
+    const query = req.role === 'agent' ? { agentId: req.agentId || '__missing_agent__' } : {};
+    if (req.role === 'agent' && !req.agentId) {
+      throw makeError(400, 'AGENT_ID_REQUIRED', 'X-Agent-Id header is required for agent requests');
+    }
+
+    const applications = await Application.find(query).sort({ createdAt: -1 });
     res.json({ data: applications });
   } catch (error) {
     next(error);
@@ -107,7 +127,8 @@ router.get('/:id/available-transitions', async (req, res, next) => {
       throw makeError(400, 'INVALID_ID', 'Invalid application id');
     }
 
-    const transitions = await getAvailableApplicationTransitions(req.params.id, req.header('X-Role'));
+    const application = await getApplicationWithAgentScope(req, req.params.id);
+    const transitions = await getAvailableApplicationTransitions(application._id, req.role);
     res.json({ transitions });
   } catch (error) {
     next(error);
@@ -120,14 +141,15 @@ router.post('/:id/transitions', async (req, res, next) => {
       throw makeError(400, 'INVALID_ID', 'Invalid application id');
     }
 
-    const application = await transitionApplication(req.params.id, req.body?.to, req.header('X-Role'));
-    res.json({ data: application });
+    const application = await getApplicationWithAgentScope(req, req.params.id);
+    const updated = await transitionApplication(application._id, req.body?.to, req.role);
+    res.json({ data: updated });
   } catch (error) {
     next(error);
   }
 });
 
-router.post('/:id/documents', async (req, res, next) => {
+router.post('/:id/documents', requireRole('agent', 'counsellor', 'qa_officer', 'admission_officer'), async (req, res, next) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       throw makeError(400, 'INVALID_ID', 'Invalid application id');
@@ -138,10 +160,7 @@ router.post('/:id/documents', async (req, res, next) => {
       throw makeError(400, 'VALIDATION_ERROR', 'Document name is required');
     }
 
-    const application = await Application.findById(req.params.id);
-    if (!application) {
-      throw makeError(404, 'APPLICATION_NOT_FOUND', 'Application not found');
-    }
+    const application = await getApplicationWithAgentScope(req, req.params.id);
 
     const normalizedName = name.trim();
     const document = await Document.findOneAndUpdate(
@@ -162,7 +181,7 @@ router.post('/:id/documents', async (req, res, next) => {
   }
 });
 
-router.post('/:id/notes', async (req, res, next) => {
+router.post('/:id/notes', requireRole('agent', 'counsellor', 'qa_officer', 'admission_officer'), async (req, res, next) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       throw makeError(400, 'INVALID_ID', 'Invalid application id');
@@ -173,30 +192,16 @@ router.post('/:id/notes', async (req, res, next) => {
       throw makeError(400, 'VALIDATION_ERROR', 'Note body is required');
     }
 
-    const role = normalizeRole(req.header('X-Role')) || 'counsellor';
-    const application = await Application.findById(req.params.id);
-    if (!application) {
-      throw makeError(404, 'APPLICATION_NOT_FOUND', 'Application not found');
-    }
+    const application = await getApplicationWithAgentScope(req, req.params.id);
 
     const note = await Note.create({
       applicationId: application._id,
       body: body.trim(),
-      role,
+      role: req.role,
     });
 
     res.status(201).json({ data: note });
   } catch (error) {
-    if (error?.name === 'ValidationError') {
-      return next(
-        makeError(
-          400,
-          'VALIDATION_ERROR',
-          'Validation failed',
-          Object.values(error.errors).map((e) => ({ field: e.path, message: e.message }))
-        )
-      );
-    }
     next(error);
   }
 });
@@ -207,10 +212,7 @@ router.get('/:id', async (req, res, next) => {
       throw makeError(400, 'INVALID_ID', 'Invalid application id');
     }
 
-    const application = await Application.findById(req.params.id);
-    if (!application) {
-      throw makeError(404, 'APPLICATION_NOT_FOUND', 'Application not found');
-    }
+    const application = await getApplicationWithAgentScope(req, req.params.id);
 
     res.json({ data: application });
   } catch (error) {

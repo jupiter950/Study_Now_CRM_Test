@@ -45,6 +45,12 @@ async function getAvailableApplicationTransitions(applicationId, role) {
 
   for (const transition of transitions) {
     let blockedReason = null;
+    if (!transition.allowed) {
+      blockedReason = `Role ${normalizeRole(role)} cannot move application to ${getStageLabel(transition.to)}.`;
+      formatted.push(formatTransition(transition, blockedReason));
+      continue;
+    }
+
     const ruleCheck = await evaluateRules(transition.rules, application, {
       from: application.currentStage,
       to: transition.to,
