@@ -9,8 +9,18 @@ const { STAGES, TERMINAL_STAGES } = require('./stages');
 const TRANSITIONS = Object.freeze([
   // Main pipeline (forward-only, no skipping)
   { from: STAGES.NEW_APP, to: STAGES.QA_REVIEW, allowedRoles: [], rules: [] },
-  { from: STAGES.QA_REVIEW, to: STAGES.APP_REVIEW, allowedRoles: [], rules: [] },
-  { from: STAGES.APP_REVIEW, to: STAGES.DECISION, allowedRoles: [], rules: [] },
+  {
+    from: STAGES.QA_REVIEW,
+    to: STAGES.APP_REVIEW,
+    allowedRoles: [],
+    rules: ['allRequiredDocumentsUploaded'],
+  },
+  {
+    from: STAGES.APP_REVIEW,
+    to: STAGES.DECISION,
+    allowedRoles: [],
+    rules: ['admissionReviewNoteRecorded'],
+  },
   { from: STAGES.DECISION, to: STAGES.DEPOSIT, allowedRoles: [], rules: [] },
   { from: STAGES.DEPOSIT, to: STAGES.CAS_REVIEW, allowedRoles: [], rules: [] },
   { from: STAGES.CAS_REVIEW, to: STAGES.ENROLMENT, allowedRoles: [], rules: [] },

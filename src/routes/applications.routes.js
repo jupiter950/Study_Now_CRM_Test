@@ -1,6 +1,6 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const { Application, Document } = require('../models');
+const { Application, Document, Note } = require('../models');
 const {
   getAvailableApplicationTransitions,
   transitionApplication,
@@ -123,6 +123,80 @@ router.post('/:id/transitions', async (req, res, next) => {
     const application = await transitionApplication(req.params.id, req.body?.to, req.header('X-Role'));
     res.json({ data: application });
   } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:id/documents', async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      throw makeError(400, 'INVALID_ID', 'Invalid application id');
+    }
+
+    const { name } = req.body || {};
+    if (typeof name !== 'string' || !name.trim()) {
+      throw makeError(400, 'VALIDATION_ERROR', 'Document name is required');
+    }
+
+    const application = await Application.findById(req.params.id);
+    if (!application) {
+      throw makeError(404, 'APPLICATION_NOT_FOUND', 'Application not found');
+    }
+
+    const normalizedName = name.trim();
+    const document = await Document.findOneAndUpdate(
+      { applicationId: application._id, name: normalizedName },
+      {
+        $set: {
+          uploaded: true,
+          uploadedAt: new Date(),
+          required: true,
+        },
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+
+    res.status(201).json({ data: document });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:id/notes', async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      throw makeError(400, 'INVALID_ID', 'Invalid application id');
+    }
+
+    const { body } = req.body || {};
+    if (typeof body !== 'string' || !body.trim()) {
+      throw makeError(400, 'VALIDATION_ERROR', 'Note body is required');
+    }
+
+    const role = normalizeRole(req.header('X-Role')) || 'counsellor';
+    const application = await Application.findById(req.params.id);
+    if (!application) {
+      throw makeError(404, 'APPLICATION_NOT_FOUND', 'Application not found');
+    }
+
+    const note = await Note.create({
+      applicationId: application._id,
+      body: body.trim(),
+      role,
+    });
+
+    res.status(201).json({ data: note });
+  } catch (error) {
+    if (error?.name === 'ValidationError') {
+      return next(
+        makeError(
+          400,
+          'VALIDATION_ERROR',
+          'Validation failed',
+          Object.values(error.errors).map((e) => ({ field: e.path, message: e.message }))
+        )
+      );
+    }
     next(error);
   }
 });

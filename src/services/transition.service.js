@@ -1,6 +1,7 @@
 const { Application, TransitionLog } = require('../models');
 const { getAvailableTransitions, isKnownStage, isValidTransition } = require('../workflow/stateMachine');
 const { getStageLabel } = require('../workflow/stages');
+const { evaluateRules } = require('../workflow/rules');
 
 function makeError(status, code, message, details) {
   const err = new Error(message);
@@ -25,10 +26,11 @@ async function writeTransitionLog({ applicationId, from, to, role, success, fail
   });
 }
 
-function formatTransition(transition) {
+function formatTransition(transition, blockedReason = null) {
   return {
     to: transition.to,
     label: getStageLabel(transition.to),
+    blockedReason,
   };
 }
 
@@ -38,7 +40,25 @@ async function getAvailableApplicationTransitions(applicationId, role) {
     throw makeError(404, 'APPLICATION_NOT_FOUND', 'Application not found');
   }
 
-  return getAvailableTransitions(application, normalizeRole(role)).map(formatTransition);
+  const transitions = getAvailableTransitions(application, normalizeRole(role));
+  const formatted = [];
+
+  for (const transition of transitions) {
+    let blockedReason = null;
+    const ruleCheck = await evaluateRules(transition.rules, application, {
+      from: application.currentStage,
+      to: transition.to,
+      role: normalizeRole(role),
+    });
+
+    if (!ruleCheck.passed) {
+      blockedReason = ruleCheck.failedRule?.blockedReason || 'Transition blocked by business rule.';
+    }
+
+    formatted.push(formatTransition(transition, blockedReason));
+  }
+
+  return formatted;
 }
 
 async function transitionApplication(applicationId, to, role) {
@@ -95,6 +115,29 @@ async function transitionApplication(applicationId, to, role) {
       failureReason: reason,
     });
     throw makeError(403, 'TRANSITION_FORBIDDEN', reason, { from: fromStage, to: targetStage });
+  }
+
+  const ruleCheck = await evaluateRules(availableTransition.rules, application, {
+    from: fromStage,
+    to: targetStage,
+    role: normalizeRole(role),
+  });
+
+  if (!ruleCheck.passed) {
+    const reason = ruleCheck.failedRule?.blockedReason || 'Transition blocked by business rule.';
+    await writeTransitionLog({
+      applicationId: application._id,
+      from: fromStage,
+      to: targetStage,
+      role,
+      success: false,
+      failureReason: `${ruleCheck.failedRule?.ruleId || 'unknownRule'}: ${reason}`,
+    });
+    throw makeError(422, 'TRANSITION_RULE_FAILED', reason, {
+      ruleId: ruleCheck.failedRule?.ruleId || null,
+      from: fromStage,
+      to: targetStage,
+    });
   }
 
   application.currentStage = targetStage;
