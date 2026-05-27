@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GSP Demo UI</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>GSP Workflow Demo</h1>
+      <p class="muted">Create applications, switch roles, test transitions/actions, and view AI readiness.</p>
+
+      <section class="card">
+        <h2>Session</h2>
+        <div class="row">
+          <label for="role">Role</label>
+          <select id="role">
+            <option value="counsellor">counsellor</option>
+            <option value="qa_officer">qa_officer</option>
+            <option value="admission_officer">admission_officer</option>
+            <option value="agent">agent</option>
+          </select>
+          <label for="agentId">Agent ID</label>
+          <input id="agentId" placeholder="agent-001" />
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Create Application</h2>
+        <form id="createForm">
+          <div class="row">
+            <input id="studentName" placeholder="Student name" required />
+            <input id="course" placeholder="Course" required />
+            <input id="university" placeholder="University" required />
+            <button type="submit">Create</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>Applications</h2>
+        <div class="row">
+          <button id="refreshApps">Refresh List</button>
+        </div>
+        <ul id="appList"></ul>
+      </section>
+
+      <section class="card">
+        <h2>Selected Application</h2>
+        <pre id="selectedApp">No application selected.</pre>
+
+        <h3>Available Transitions</h3>
+        <div id="transitions"></div>
+
+        <h3>Available Actions</h3>
+        <div id="actions"></div>
+
+        <h3>Document Upload</h3>
+        <div class="row">
+          <input id="docName" placeholder="passport" />
+          <button id="uploadDoc">Upload Document</button>
+        </div>
+
+        <h3>Add Note</h3>
+        <div class="row">
+          <input id="noteText" placeholder="Write note..." />
+          <button id="addNote">Add Note</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>AI Assessment (QA/App Review)</h2>
+        <div class="row">
+          <button id="triggerAi">Trigger AI Assessment</button>
+        </div>
+        <pre id="aiPanel">No AI assessment loaded.</pre>
+      </section>
+
+      <section class="card">
+        <h2>API Result</h2>
+        <pre id="apiResult">Ready.</pre>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+  </html>
