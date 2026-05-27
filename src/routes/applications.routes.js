@@ -1,6 +1,10 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const { Application, Document } = require('../models');
+const {
+  getAvailableApplicationTransitions,
+  transitionApplication,
+} = require('../services/transition.service');
 
 const router = express.Router();
 
@@ -92,6 +96,32 @@ router.get('/', async (_req, res, next) => {
   try {
     const applications = await Application.find().sort({ createdAt: -1 });
     res.json({ data: applications });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:id/available-transitions', async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      throw makeError(400, 'INVALID_ID', 'Invalid application id');
+    }
+
+    const transitions = await getAvailableApplicationTransitions(req.params.id, req.header('X-Role'));
+    res.json({ transitions });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:id/transitions', async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      throw makeError(400, 'INVALID_ID', 'Invalid application id');
+    }
+
+    const application = await transitionApplication(req.params.id, req.body?.to, req.header('X-Role'));
+    res.json({ data: application });
   } catch (error) {
     next(error);
   }

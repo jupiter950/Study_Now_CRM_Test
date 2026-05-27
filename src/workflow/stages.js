@@ -25,9 +25,27 @@ const TERMINAL_STAGES = Object.freeze({
 
 const ALL_STAGES = Object.freeze([...PIPELINE, ...Object.values(TERMINAL_STAGES)]);
 
+const STAGE_LABELS = Object.freeze({
+  [STAGES.NEW_APP]: 'New App',
+  [STAGES.QA_REVIEW]: 'QA Review',
+  [STAGES.APP_REVIEW]: 'App Review',
+  [STAGES.DECISION]: 'Decision',
+  [STAGES.DEPOSIT]: 'Deposit',
+  [STAGES.CAS_REVIEW]: 'CAS Review',
+  [STAGES.ENROLMENT]: 'Enrolment',
+  [TERMINAL_STAGES.APP_REJECTED]: 'App Rejected',
+  [TERMINAL_STAGES.CLOSED_LOST]: 'Closed Lost',
+});
+
+function getStageLabel(stage) {
+  return STAGE_LABELS[stage] || stage;
+}
+
 module.exports = {
   STAGES,
   PIPELINE,
   TERMINAL_STAGES,
   ALL_STAGES,
+  STAGE_LABELS,
+  getStageLabel,
 };
