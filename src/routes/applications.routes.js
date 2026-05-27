@@ -6,6 +6,10 @@ const {
   getAvailableApplicationTransitions,
   transitionApplication,
 } = require('../services/transition.service');
+const {
+  getAvailableApplicationActions,
+  executeApplicationAction,
+} = require('../services/action.service');
 
 const router = express.Router();
 
@@ -130,6 +134,44 @@ router.get('/:id/available-transitions', async (req, res, next) => {
     const application = await getApplicationWithAgentScope(req, req.params.id);
     const transitions = await getAvailableApplicationTransitions(application._id, req.role);
     res.json({ transitions });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:id/available-actions', async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      throw makeError(400, 'INVALID_ID', 'Invalid application id');
+    }
+
+    const application = await getApplicationWithAgentScope(req, req.params.id);
+    const actions = await getAvailableApplicationActions(application._id, req.role);
+    res.json({ actions });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:id/actions', async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      throw makeError(400, 'INVALID_ID', 'Invalid application id');
+    }
+
+    const { action, payload } = req.body || {};
+    if (typeof action !== 'string' || !action.trim()) {
+      throw makeError(400, 'VALIDATION_ERROR', 'Action name is required');
+    }
+
+    const application = await getApplicationWithAgentScope(req, req.params.id);
+    const updated = await executeApplicationAction(
+      application._id,
+      action.trim(),
+      req.role,
+      payload || {}
+    );
+    res.json({ data: updated });
   } catch (error) {
     next(error);
   }

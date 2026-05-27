@@ -22,6 +22,7 @@ const applicationSchema = new mongoose.Schema(
       enum: ['active', 'deferred', 'closed', 'withdrawn', 'cancelled', 'closed_lost'],
     },
     agentId: { type: String, trim: true, default: null },
+    deferredIntake: { type: String, trim: true, default: null },
     assignedOfficers: { type: officerAssignmentSchema, default: () => ({}) },
   },
   { timestamps: true }
