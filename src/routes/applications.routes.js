@@ -10,6 +10,10 @@ const {
   getAvailableApplicationActions,
   executeApplicationAction,
 } = require('../services/action.service');
+const {
+  getLatestAssessmentForCurrentReviewStage,
+  triggerAiAssessment,
+} = require('../services/ai-assessment.service');
 
 const router = express.Router();
 
@@ -172,6 +176,42 @@ router.post('/:id/actions', async (req, res, next) => {
       payload || {}
     );
     res.json({ data: updated });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:id/ai-assessment', async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      throw makeError(400, 'INVALID_ID', 'Invalid application id');
+    }
+
+    const application = await getApplicationWithAgentScope(req, req.params.id);
+    const assessment = await getLatestAssessmentForCurrentReviewStage(application._id);
+    if (!assessment) {
+      return res.status(404).json({
+        error: 'No AI assessment found for current review stage',
+        code: 'AI_ASSESSMENT_NOT_FOUND',
+      });
+    }
+
+    res.json({ data: assessment });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:id/ai-assessment', async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      throw makeError(400, 'INVALID_ID', 'Invalid application id');
+    }
+
+    const application = await getApplicationWithAgentScope(req, req.params.id);
+    const stage = typeof req.body?.stage === 'string' ? req.body.stage.trim() : application.currentStage;
+    const assessment = await triggerAiAssessment(application._id, stage);
+    res.status(201).json({ data: assessment });
   } catch (error) {
     next(error);
   }

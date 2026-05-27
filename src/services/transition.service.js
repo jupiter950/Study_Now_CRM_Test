@@ -2,6 +2,7 @@ const { Application, TransitionLog } = require('../models');
 const { getAvailableTransitions, isKnownStage, isValidTransition } = require('../workflow/stateMachine');
 const { getStageLabel } = require('../workflow/stages');
 const { evaluateRules } = require('../workflow/rules');
+const { isReviewStage, triggerAiAssessment } = require('./ai-assessment.service');
 
 function makeError(status, code, message, details) {
   const err = new Error(message);
@@ -156,6 +157,15 @@ async function transitionApplication(applicationId, to, role) {
     role,
     success: true,
   });
+
+  if (isReviewStage(targetStage)) {
+    // Advisory AI check: do not block transition on provider failures.
+    try {
+      await triggerAiAssessment(application._id, targetStage);
+    } catch (error) {
+      console.error('Auto AI assessment trigger failed:', error.message);
+    }
+  }
 
   return application;
 }
